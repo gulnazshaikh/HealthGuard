@@ -5,7 +5,7 @@ import pandas as pd
 app = Flask(__name__)
 CORS(app)
 
-df = None  # Global dataframe to hold uploaded data
+df = None  # Global DataFrame
 
 @app.route('/')
 def home():
@@ -17,49 +17,41 @@ def upload_csv():
     try:
         file = request.files['file']
         df = pd.read_csv(file)
+
         return jsonify({
-            "message": "Uploaded",
+            "message": "Uploaded successfully",
             "columns": df.columns.tolist(),
             "data": df.head(10).to_dict(orient='records')
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": f"Upload failed: {str(e)}"}), 400
 
-@app.route('/preview')
-def preview():
-    global df
-    if df is not None:
-        return jsonify({
-            "columns": df.columns.tolist(),
-            "data": df.to_dict(orient='records')  # ✅ return full data
-        })
-    return jsonify({"error": "No data uploaded"}), 400
-
-@app.route('/clean')
+@app.route('/clean', methods=['GET'])
 def clean_data():
     global df
-    if df is not None:
+    if df is None:
+        return jsonify({"error": "No data uploaded"}), 400
+
+    try:
+        # Trim whitespace
+        df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+
+        # Fill missing values with mean (for numeric columns)
         df.fillna(df.mean(numeric_only=True), inplace=True)
 
-        # Sample visual data
-        sugar = df['Sugar'].tolist() if 'Sugar' in df else []
-        bp = df['BP'].tolist() if 'BP' in df else []
-        time = list(range(len(sugar)))
-
-        radar = [
-            df['Age'].mean() if 'Age' in df else 0,
-            df['BP'].mean() if 'BP' in df else 0,
-            df['Sugar'].mean() if 'Sugar' in df else 0,
-            df['Cholesterol'].mean() if 'Cholesterol' in df else 0
-        ]
+        # Replace 0s with mean for selected columns if 0 is invalid
+        zero_replace_cols = ['Glucose', 'BloodPressure', 'BMI', 'Insulin', 'SkinThickness']
+        for col in zero_replace_cols:
+            if col in df.columns:
+                df[col] = df[col].replace(0, df[col].mean())
 
         return jsonify({
-            "sugar": sugar[:10],
-            "bp": bp[:10],
-            "time": time[:10],
-            "radar": radar
+            "message": "Cleaned successfully",
+            "data": df.head(10).to_dict(orient='records')
         })
-    return jsonify({"error": "No data uploaded"}), 400
+
+    except Exception as e:
+        return jsonify({"error": f"Cleaning failed: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
