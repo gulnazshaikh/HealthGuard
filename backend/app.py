@@ -25,21 +25,17 @@ def upload_csv():
     global df
     try:
         if 'file' not in request.files:
-            print("⚠️ No file part in request")
             return jsonify({"error": "No file part"}), 400
 
         file = request.files['file']
 
         if file.filename == '':
-            print("⚠️ No file selected")
             return jsonify({"error": "No file selected"}), 400
 
-        print("✅ File received:", file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
 
         df = pd.read_csv(filepath)
-        print("📄 First 5 rows of uploaded data:\n", df.head())
 
         return jsonify({
             "message": "Uploaded",
@@ -49,7 +45,6 @@ def upload_csv():
         })
 
     except Exception as e:
-        print("❌ Upload error:", e)
         return jsonify({"error": str(e)}), 400
 
 
@@ -62,20 +57,18 @@ def clean_data():
 
         df_cleaned = df.copy()
 
-        # Step 1: Trim whitespace from string columns
+        # 1. Trim whitespace from string columns
         for col in df_cleaned.select_dtypes(include='object').columns:
             df_cleaned[col] = df_cleaned[col].str.strip()
 
-        # Step 2: Replace 0 with NaN in critical numeric columns
+        # 2. Replace 0 with NaN in critical numeric columns
         critical_columns = ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']
         for col in critical_columns:
             if col in df_cleaned.columns:
                 df_cleaned[col] = df_cleaned[col].replace(0, np.nan)
 
-        # Step 3: Fill NaN with column mean (numeric columns only)
+        # 3. Fill NaN with mean (numeric only)
         df_cleaned.fillna(df_cleaned.mean(numeric_only=True), inplace=True)
-
-        print("✅ Data cleaned successfully")
 
         return jsonify({
             "message": "Cleaned successfully",
@@ -84,7 +77,6 @@ def clean_data():
         })
 
     except Exception as e:
-        print("❌ Cleaning error:", e)
         return jsonify({"error": str(e)}), 400
 
 
