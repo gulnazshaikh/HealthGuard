@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import pandas as pd
 import numpy as np
@@ -13,6 +13,7 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 df = None  # global DataFrame
+CLEANED_FILE_PATH = os.path.join(UPLOAD_FOLDER, "cleaned_file.csv")
 
 
 @app.route('/')
@@ -28,7 +29,6 @@ def upload_csv():
             return jsonify({"error": "No file part"}), 400
 
         file = request.files['file']
-
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
 
@@ -57,18 +57,21 @@ def clean_data():
 
         df_cleaned = df.copy()
 
-        # 1. Trim whitespace from string columns
+        # Step 1: Trim whitespace
         for col in df_cleaned.select_dtypes(include='object').columns:
             df_cleaned[col] = df_cleaned[col].str.strip()
 
-        # 2. Replace 0 with NaN in critical numeric columns
+        # Step 2: Replace 0 with NaN in critical numeric columns
         critical_columns = ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']
         for col in critical_columns:
             if col in df_cleaned.columns:
                 df_cleaned[col] = df_cleaned[col].replace(0, np.nan)
 
-        # 3. Fill NaN with mean (numeric only)
+        # Step 3: Fill NaN with column mean
         df_cleaned.fillna(df_cleaned.mean(numeric_only=True), inplace=True)
+
+        # Save cleaned file
+        df_cleaned.to_csv(CLEANED_FILE_PATH, index=False)
 
         return jsonify({
             "message": "Cleaned successfully",
@@ -76,6 +79,17 @@ def clean_data():
             "data": df_cleaned.head(10).to_dict(orient='records')
         })
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/download', methods=['GET'])
+def download_cleaned_csv():
+    try:
+        if os.path.exists(CLEANED_FILE_PATH):
+            return send_file(CLEANED_FILE_PATH, as_attachment=True)
+        else:
+            return jsonify({"error": "Cleaned file not found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
