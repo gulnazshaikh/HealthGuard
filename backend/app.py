@@ -70,7 +70,7 @@ def clean_csv():
             if col in df.columns:
                 df[col] = df[col].replace(0, np.nan)
 
-        # 3) fill NaNs with mean
+        # 3) fill NaNs with mean for numeric cols
         df.fillna(df.mean(numeric_only=True), inplace=True)
 
         # 4) drop duplicates
@@ -94,7 +94,11 @@ def clean_csv():
 def download_cleaned():
     try:
         if os.path.exists(CLEANED_FILE_PATH):
-            return send_file(CLEANED_FILE_PATH, as_attachment=True, download_name="cleaned_file.csv")
+            return send_file(
+                CLEANED_FILE_PATH,
+                as_attachment=True,
+                download_name="cleaned_file.csv"
+            )
         return jsonify({"error": "Cleaned file not found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -109,13 +113,15 @@ def quick_review():
 
         df = pd.read_csv(CLEANED_FILE_PATH)
 
-        # describe safely
+        # safe describe (numeric + object both)
+        describe = {}
         try:
-            describe = df.describe(include="all").where(
-                pd.notnull(df.describe(include="all")), None
-            ).to_dict()
+            num_desc = df.describe(include=[np.number]).to_dict()
+            cat_desc = df.describe(include=["object"]).to_dict()
+            describe.update(num_desc)
+            describe.update(cat_desc)
         except Exception:
-            describe = df.describe().where(pd.notnull(df.describe()), None).to_dict()
+            describe = df.describe().to_dict()
 
         missing = df.isnull().sum().to_dict()
         dtypes = {c: str(t) for c, t in df.dtypes.items()}
@@ -130,6 +136,36 @@ def quick_review():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ----------------- Chat with CSV -----------------
+@app.route("/chat", methods=["POST"])
+def chat_with_csv():
+    try:
+        if not os.path.exists(CLEANED_FILE_PATH):
+            return jsonify({"answer": "❌ Please upload and clean a CSV first."}), 400
+
+        df = pd.read_csv(CLEANED_FILE_PATH)
+        data = request.get_json()
+        question = data.get("question", "").lower()
+
+        # Simple rule-based answers
+        if "row" in question:
+            answer = f"The dataset has {df.shape[0]} rows."
+        elif "column" in question:
+            answer = f"The dataset has {df.shape[1]} columns: {', '.join(df.columns)}"
+        elif "missing" in question:
+            missing = df.isnull().sum().sum()
+            answer = f"There are {missing} missing values in the dataset."
+        elif "mean" in question:
+            nums = df.select_dtypes(include=np.number).mean().to_dict()
+            answer = f"Column means: {nums}"
+        else:
+            answer = "⚠️ I can answer about rows, columns, missing values, and means."
+
+        return jsonify({"answer": answer})
+    except Exception as e:
+        return jsonify({"answer": f"Error: {str(e)}"}), 500
 
 
 if __name__ == "__main__":
